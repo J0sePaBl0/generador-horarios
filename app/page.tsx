@@ -52,37 +52,73 @@ export default function HomePage() {
   }, [selectedMonth]);
 
   const handleGenerate = async () => {
-    try {
-      setIsGenerating(true);
+  try {
+    setIsGenerating(true);
 
-      // Aquí luego conectas tu endpoint real:
-      // await fetch("/api/schedules/generate", {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify({ year: 2026, month: selectedMonth }),
-      // });
+    const year = new Date().getFullYear();
 
-      // Simulación de archivo generado
-      const fakeContent = `Horario generado para ${selectedMonthLabel}`;
-      const generatedFile = new File(
-        [fakeContent],
-        `horario-${selectedMonthLabel.toLowerCase()}-2026.xlsx`,
-        {
-          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        }
-      );
+    const generateMassesResponse = await fetch("/api/schedules/generate-masses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        year,
+        month: selectedMonth,
+      }),
+    });
 
-      setUploadedFile({
-        file: generatedFile,
-        name: generatedFile.name,
-        sizeLabel: formatFileSize(generatedFile.size),
-      });
-    } catch (error) {
-      console.error("Error generating schedule:", error);
-    } finally {
-      setIsGenerating(false);
+    const generateMassesData = await generateMassesResponse.json();
+
+    if (!generateMassesResponse.ok) {
+      throw new Error(generateMassesData.error || "Error generando misas");
     }
-  };
+
+    const assignMinistersResponse = await fetch("/api/schedules/assign-ministers", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        year,
+        month: selectedMonth,
+      }),
+    });
+
+    const assignMinistersData = await assignMinistersResponse.json();
+
+    if (!assignMinistersResponse.ok) {
+      throw new Error(assignMinistersData.error || "Error asignando ministros");
+    }
+
+    const exportResponse = await fetch(
+      `/api/schedules/export?year=${year}&month=${selectedMonth}`
+    );
+
+    if (!exportResponse.ok) {
+      throw new Error("Error exportando el horario");
+    }
+
+    const blob = await exportResponse.blob();
+
+    const fileName = `horario-${selectedMonthLabel.toLowerCase()}-${year}.xlsx`;
+
+    const generatedFile = new File([blob], fileName, {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    setUploadedFile({
+      file: generatedFile,
+      name: generatedFile.name,
+      sizeLabel: formatFileSize(generatedFile.size),
+    });
+  } catch (error) {
+    console.error(error);
+    alert(error instanceof Error ? error.message : "Error inesperado");
+  } finally {
+    setIsGenerating(false);
+  }
+};
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const selected = event.target.files?.[0];
@@ -104,31 +140,51 @@ export default function HomePage() {
   const handleRemoveFile = () => {
     setUploadedFile(null);
   };
+  const handleDownloadFile = () => {
+  if (!uploadedFile) return;
+
+  const url = URL.createObjectURL(uploadedFile.file);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = uploadedFile.name;
+  link.click();
+
+  URL.revokeObjectURL(url);
+};
 
   const handleConfirm = async () => {
-    if (!uploadedFile) return;
+  if (!uploadedFile) return;
 
-    try {
-      setIsConfirming(true);
+  try {
+    setIsConfirming(true);
 
-      // Aquí luego conectas tu endpoint real:
-      // const formData = new FormData();
-      // formData.append("file", uploadedFile.file);
-      // formData.append("month", String(selectedMonth));
-      //
-      // await fetch("/api/schedules/confirm", {
-      //   method: "POST",
-      //   body: formData,
-      // });
+    const year = new Date().getFullYear();
 
-      console.log("Archivo confirmado:", uploadedFile.name);
-      alert("Horario confirmado correctamente.");
-    } catch (error) {
-      console.error("Error confirming schedule:", error);
-    } finally {
-      setIsConfirming(false);
+    const formData = new FormData();
+    formData.append("file", uploadedFile.file);
+    formData.append("year", String(year));
+    formData.append("month", String(selectedMonth));
+
+    const response = await fetch("/api/schedules/confirm", {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Error confirmando el horario");
     }
-  };
+
+    alert("Horario confirmado correctamente.");
+  } catch (error) {
+    console.error(error);
+    alert(error instanceof Error ? error.message : "Error inesperado");
+  } finally {
+    setIsConfirming(false);
+  }
+};
 
   return (
     <main className="min-h-screen bg-[#ece8e5]">
@@ -225,6 +281,13 @@ export default function HomePage() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleDownloadFile}
+                      className="inline-flex items-center gap-2 rounded-xl bg-[#f0e7e1] px-4 py-2.5 font-semibold text-[#7d5841] transition hover:bg-[#eadfd7]"
+                    >
+                      Descargar
+                    </button>
                     <button
                       type="button"
                       onClick={handleOpenFilePicker}
